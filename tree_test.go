@@ -26,10 +26,14 @@ func printChildren(n *node, prefix string) {
 // Used as a workaround since we can't compare functions or their addresses
 var fakeHandlerValue string
 
-func fakeHandler(val string) Handle {
-	return func(http.ResponseWriter, *http.Request, Params) {
-		fakeHandlerValue = val
-	}
+type comparableFakeHandler string
+
+func (fake comparableFakeHandler) ServeHTTP(http.ResponseWriter, *http.Request) {
+	fakeHandlerValue = string(fake)
+}
+
+func fakeHandler(val string) http.Handler {
+	return comparableFakeHandler(val)
 }
 
 type testRequests []struct {
@@ -50,7 +54,7 @@ func checkRequests(t *testing.T, tree *node, requests testRequests) {
 		} else if request.nilHandler {
 			t.Errorf("handle mismatch for route '%s': Expected nil handle", request.path)
 		} else {
-			handler(nil, nil, nil)
+			handler.ServeHTTP(nil, nil)
 			if fakeHandlerValue != request.route {
 				t.Errorf("handle mismatch for route '%s': Wrong handle (%s != %s)", request.path, fakeHandlerValue, request.route)
 			}
@@ -477,6 +481,14 @@ func TestTreeRootTrailingSlashRedirect(t *testing.T) {
 	}
 }
 
+// func display(n *node, depth int) {
+// 	prefix := strings.Repeat(" ", depth)
+// 	fmt.Printf(prefix+" %v\n", n.handle)
+// 	for _, nd := range n.children {
+// 		display(nd, depth+1)
+// 	}
+// }
+
 func TestTreeFindCaseInsensitivePath(t *testing.T) {
 	tree := &node{}
 
@@ -612,7 +624,6 @@ func TestTreeFindCaseInsensitivePath(t *testing.T) {
 		if found != test.found || (found && (string(out) != test.out)) {
 			t.Errorf("Wrong result for '%s': got %s, %t; want %s, %t",
 				test.in, string(out), found, test.out, test.found)
-			return
 		}
 	}
 	// With fixTrailingSlash = false
@@ -626,7 +637,6 @@ func TestTreeFindCaseInsensitivePath(t *testing.T) {
 			if found != test.found || (found && (string(out) != test.out)) {
 				t.Errorf("Wrong result for '%s': got %s, %t; want %s, %t",
 					test.in, string(out), found, test.out, test.found)
-				return
 			}
 		}
 	}
