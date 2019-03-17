@@ -8,8 +8,6 @@ import (
 type paramsKey struct{}
 
 // ParamsKey is the request context key under which URL params are stored.
-//
-// This is only present from go 1.7.
 var ParamsKey = paramsKey{}
 
 // ParamsFromContext pulls the URL parameters from a request context,
