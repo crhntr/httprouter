@@ -10,7 +10,7 @@ The router is optimized for high performance and a small memory footprint. It sc
 
 **Only explicit matches:** With other routers, like [`http.ServeMux`](https://golang.org/pkg/net/http/#ServeMux), a requested URL path could match multiple patterns. Therefore they have some awkward pattern priority rules, like *longest match* or *first registered, first matched*. By design of this router, a request can only match exactly one or no route. As a result, there are also no unintended matches, which makes it great for SEO and improves the user experience.
 
-**Stop caring about trailing slashes:** Choose the URL style you like, the router automatically redirects the client if a trailing slash is missing or if there is one extra. Of course it only does so, if the new path has a handler. If you don't like it, you can [turn off this behavior](https://godoc.org/github.com/julienschmidt/httprouter#Router.RedirectTrailingSlash).
+**Stop caring about trailing slashes:** Choose the URL style you like, the router automatically redirects the client if a trailing slash is missing or if there is one extra. Of course it only does so, if the new path has a handler. If you don't like it, you can [turn off this behavior](https://godoc.org/github.com/crhntr/httprouter#Router.RedirectTrailingSlash).
 
 **Path auto-correction:** Besides detecting the missing or additional trailing slash at no extra cost, the router can also fix wrong cases and remove superfluous path elements (like `../` or `//`). Is [CAPTAIN CAPS LOCK](http://www.urbandictionary.com/define.php?term=Captain+Caps+Lock) one of your users? HttpRouter can help him by making a case-insensitive look-up and redirecting him to the correct URL.
 
@@ -18,17 +18,15 @@ The router is optimized for high performance and a small memory footprint. It sc
 
 **Zero Garbage:** The matching and dispatching process generates zero bytes of garbage. The only heap allocations that are made are building the slice of the key-value pairs for path parameters, and building new context and request objects (the latter only in the standard `Handler`/`HandlerFunc` api). In the 3-argument API, if the request path contains no parameters not a single heap allocation is necessary.
 
-**Best Performance:** [Benchmarks speak for themselves](https://github.com/julienschmidt/go-http-routing-benchmark). See below for technical details of the implementation.
-
-**No more server crashes:** You can set a [Panic handler](https://godoc.org/github.com/julienschmidt/httprouter#Router.PanicHandler) to deal with panics occurring during handling a HTTP request. The router then recovers and lets the `PanicHandler` log what happened and deliver a nice error page.
+**No more server crashes:** You can set a [Panic handler](https://godoc.org/github.com/crhntr/httprouter#Router.PanicHandler) to deal with panics occurring during handling a HTTP request. The router then recovers and lets the `PanicHandler` log what happened and deliver a nice error page.
 
 **Perfect for APIs:** The router design encourages to build sensible, hierarchical RESTful APIs. Moreover it has builtin native support for [OPTIONS requests](http://zacstewart.com/2012/04/14/http-options-method.html) and `405 Method Not Allowed` replies.
 
-Of course you can also set **custom [`NotFound`](https://godoc.org/github.com/julienschmidt/httprouter#Router.NotFound) and  [`MethodNotAllowed`](https://godoc.org/github.com/julienschmidt/httprouter#Router.MethodNotAllowed) handlers** and [**serve static files**](https://godoc.org/github.com/julienschmidt/httprouter#Router.ServeFiles).
+Of course you can also set **custom [`NotFound`](https://godoc.org/github.com/crhntr/httprouter#Router.NotFound) and  [`MethodNotAllowed`](https://godoc.org/github.com/crhntr/httprouter#Router.MethodNotAllowed) handlers** and [**serve static files**](https://godoc.org/github.com/crhntr/httprouter#Router.ServeFiles).
 
 ## Usage
 
-This is just a quick introduction, view the [GoDoc](http://godoc.org/github.com/julienschmidt/httprouter) for details.
+This is just a quick introduction, view the [GoDoc](http://godoc.org/github.com/crhntr/httprouter) for details.
 
 Let's start with a trivial example:
 
@@ -37,7 +35,7 @@ package main
 
 import (
     "fmt"
-    "github.com/julienschmidt/httprouter"
+    "github.com/crhntr/httprouter"
     "net/http"
     "log"
 )
@@ -106,7 +104,7 @@ Priority   Path             Handle
 1          └contact\        *<8>
 ```
 
-Every `*<num>` represents the memory address of a handler function (a pointer). If you follow a path trough the tree from the root to the leaf, you get the complete route path, e.g `\blog\:post\`, where `:post` is just a placeholder ([*parameter*](#named-parameters)) for an actual post name. Unlike hash-maps, a tree structure also allows us to use dynamic parts like the `:post` parameter, since we actually match against the routing patterns instead of just comparing hashes. [As benchmarks show](https://github.com/julienschmidt/go-http-routing-benchmark), this works very well and efficient.
+Every `*<num>` represents the memory address of a handler function (a pointer). If you follow a path trough the tree from the root to the leaf, you get the complete route path, e.g `\blog\:post\`, where `:post` is just a placeholder ([*parameter*](#named-parameters)) for an actual post name. Unlike hash-maps, a tree structure also allows us to use dynamic parts like the `:post` parameter, since we actually match against the routing patterns instead of just comparing hashes. [As benchmarks show](https://github.com/crhntr/go-http-routing-benchmark), this works very well and efficient.
 
 Since URL paths have a hierarchical structure and make use only of a limited set of characters (byte values), it is very likely that there are a lot of common prefixes. This allows us to easily reduce the routing into ever smaller problems. Moreover the router manages a separate tree for every request method. For one thing it is more space efficient than holding a method->handle map in every single node, it also allows us to greatly reduce the routing problem before even starting the look-up in the prefix-tree.
 
@@ -125,108 +123,11 @@ For even better scalability, the child nodes on each tree level are ordered by p
 └-
 ```
 
-## Where can I find Middleware *X*?
-
-This package just provides a very efficient request router with a few extra features. The router is just a [`http.Handler`](https://golang.org/pkg/net/http/#Handler), you can chain any http.Handler compatible middleware before the router, for example the [Gorilla handlers](http://www.gorillatoolkit.org/pkg/handlers). Or you could [just write your own](https://justinas.org/writing-http-middleware-in-go/), it's very easy!
-
-Alternatively, you could try [a web framework based on HttpRouter](#web-frameworks-based-on-httprouter).
-
-### Multi-domain / Sub-domains
-
-Here is a quick example: Does your server serve multiple domains / hosts?
-You want to use sub-domains?
-Define a router per host!
-
-```go
-// We need an object that implements the http.Handler interface.
-// Therefore we need a type for which we implement the ServeHTTP method.
-// We just use a map here, in which we map host names (with port) to http.Handlers
-type HostSwitch map[string]http.Handler
-
-// Implement the ServeHTTP method on our new type
-func (hs HostSwitch) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Check if a http.Handler is registered for the given host.
-	// If yes, use it to handle the request.
-	if handler := hs[r.Host]; handler != nil {
-		handler.ServeHTTP(w, r)
-	} else {
-		// Handle host names for which no handler is registered
-		http.Error(w, "Forbidden", 403) // Or Redirect?
-	}
-}
-
-func main() {
-	// Initialize a router as usual
-	router := httprouter.New()
-	router.GET("/", Index)
-	router.GET("/hello/:name", Hello)
-
-	// Make a new HostSwitch and insert the router (our http handler)
-	// for example.com and port 12345
-	hs := make(HostSwitch)
-	hs["example.com:12345"] = router
-
-	// Use the HostSwitch to listen and serve on port 12345
-	log.Fatal(http.ListenAndServe(":12345", hs))
-}
-```
-
-### Basic Authentication
-
-Another quick example: Basic Authentication (RFC 2617) for handles:
-
-```go
-package main
-
-import (
-	"fmt"
-	"log"
-	"net/http"
-
-	"github.com/julienschmidt/httprouter"
-)
-
-func BasicAuth(next http.Handler, requiredUser, requiredPassword string) httprouter.Handle {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Get the Basic Authentication credentials
-		user, password, hasAuth := r.BasicAuth()
-
-		if hasAuth && user == requiredUser && password == requiredPassword {
-			// Delegate request to the given handle
-			next.ServeHTTP(w, r)
-		} else {
-			// Request Basic Authentication otherwise
-			w.Header().Set("WWW-Authenticate", "Basic realm=Restricted")
-			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-		}
-	}
-}
-
-func Index(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Not protected!\n")
-}
-
-func Protected(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Protected!\n")
-}
-
-func main() {
-	user := "gordon"
-	pass := "secret!"
-
-	router := httprouter.New()
-	router.GET("/", Index)
-	router.GET("/protected/", BasicAuth(Protected, user, pass))
-
-	log.Fatal(http.ListenAndServe(":8080", router))
-}
-```
-
 ## Chaining with the NotFound handler
 
-**NOTE: It might be required to set [`Router.HandleMethodNotAllowed`](https://godoc.org/github.com/julienschmidt/httprouter#Router.HandleMethodNotAllowed) to `false` to avoid problems.**
+**NOTE: It might be required to set [`Router.HandleMethodNotAllowed`](https://godoc.org/github.com/crhntr/httprouter#Router.HandleMethodNotAllowed) to `false` to avoid problems.**
 
-You can use another [`http.Handler`](https://golang.org/pkg/net/http/#Handler), for example another router, to handle requests which could not be matched by this router by using the [`Router.NotFound`](https://godoc.org/github.com/julienschmidt/httprouter#Router.NotFound) handler. This allows chaining.
+You can use another [`http.Handler`](https://golang.org/pkg/net/http/#Handler), for example another router, to handle requests which could not be matched by this router by using the [`Router.NotFound`](https://godoc.org/github.com/crhntr/httprouter#Router.NotFound) handler. This allows chaining.
 
 ### Static files
 
